@@ -1,29 +1,4 @@
-let persons = [
-    { 
-      "id": 1,
-      "name": "Arto Hellas", 
-      "number": "040-123456"
-    },
-    { 
-      "id": 2,
-      "name": "Ada Lovelace", 
-      "number": "39-44-5323523"
-    },
-    { 
-      "id": 3,
-      "name": "Dan Abramov", 
-      "number": "12-43-234345"
-    },
-    { 
-      "id": 4,
-      "name": "Mary Poppendieck", 
-      "number": "39-23-6423122"
-    }
-]
-
-const generateId = () => Math.floor(Math.random() * 10000)
-
-const PORT = process.env.PORT || 3001
+let persons = []
 
 const express = require('express')
 const app = express()
@@ -37,70 +12,103 @@ app.use(morgan(':method :url :status :res[content-length] - :response-time ms :b
 const cors = require('cors')
 app.use(cors())
 
-app.listen(PORT)
+const errorHandler = (error, request, response, next) => {
+    console.log('errorHandler')
+    console.log(error)
+    console.error(error.message)
+
+    if (error.name === 'CastError') {
+        return response.status(400).send({ error: 'malformatted id' })
+    }
+    else if (error.name === 'ValidationError') {
+        return response.status(400).json({error: error.message})
+    }
+
+    next(error)
+}
+
+require('dotenv').config()
+const Person = require('./models/person')
+
+app.listen(process.env.PORT)
 
 app.get('/api/persons', (req, resp) => {
     console.log('Get all')
-    resp.json(persons)
+    Person.find({}).then(persons => {
+        resp.json(persons)
+    }) 
+    
 })
 
 app.get('/info', (req, resp) => {
-    const date = Date().toString()
-    resp.send(
-        `Phonebook has info for ${persons.length} people.
-        <br\>
-        ${Date()}`)
+    Person.find({}).then(persons => {
+        const date = Date().toString()
+        resp.send(
+            `Phonebook has info for ${persons.length} people.
+            <br\>
+            ${Date()}`)
+    }) 
 })
 
-app.get('/api/persons/:id', (req, resp) => {
+app.get('/api/persons/:id', (req, resp, next) => {
     console.log('Get person')
-    const foundPerson = persons.find(person => person.id === Number(req.params.id));
-    if (foundPerson) {
-        console.log('Found person')
-        resp.json(foundPerson)
-    }
-    else {
-        console.log('Cannot find person')
-        resp.status(400).end()
-    }
+    const foundPerson = Person.findById(req.params.id).then(person => {
+        if (person) {
+            console.log('Found person')
+            resp.json(person)
+        }
+        else {
+            console.log('Person does not exist')
+            resp.status(404).end()
+        }
+    }).catch(error => {
+        next(error)
+        console.log('Cannot find person:', error)
+        resp.status(400).send({ error: 'malformatted id' })
+    });
 })
 
-app.delete('/api/persons/:id', (req, resp) => {
-    const id = Number(req.params.id)
-    persons = persons.filter(p => p.id !== id)
-
-    resp.status(204).end()
+app.delete('/api/persons/:id', (req, resp, next) => {
+    Person.findByIdAndDelete(req.params.id).then(deleted => {
+        resp.status(204).end()
+    }). catch(error => next(error))
 })
 
-app.post('/api/persons', (req, resp) => {
+app.post('/api/persons', (req, resp, next) => {
     const body = req.body
     console.log('request: ', req)
     console.log('body: ', body)
     console.log('name: ', body.name)
 
-    if (!body.name) {
-        return resp.status(400).json({ 
-            error: 'name is missing'
-        })
-    }
-    else if (!body.number) {
-        return resp.status(400).json({ 
-            error: 'number is missing'
-        })
-    }
-    else if (persons.find(person => person.name === body.name)) {
-        return resp.status(409).json({ 
-            error: 'name must be unique'
-        })
-    }
-
-    person = {
+    const person = new Person({
         name: body.name,
-        number: body.number ? body.number : '',
-        id: generateId()
+        number: body.number
+    })
+
+    console.log('Save!')
+    person.save().then(savedPerson => {
+        resp.json(person)
+    }).catch(error => next(error))
+})
+
+app.put('/api/persons/:id', (req, resp, next) => {
+    const body = req.body
+    const person = {
+        name: body.name,
+        number: body.number,
     }
 
-    persons.push(person)
-
-    resp.json(person)
+    Person.findByIdAndUpdate(req.params.id, person, {new: true, runValidators: true, context:'query'}).then(updatedPerson => {
+        if (updatedPerson) {
+            console.log('Updated person: ', updatedPerson)
+            resp.json(updatedPerson)
+        }
+        else {
+            console.log('Cannot find person')
+            resp.status(404).end()
+        }
+    }).catch(error => next(error))
 })
+  
+// this has to be the last loaded middleware, also all the routes should be registered before this!
+app.use(errorHandler)

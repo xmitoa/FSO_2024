@@ -15,12 +15,10 @@ const App = () => {
     message: null,
   });
 
-  const updateNotification = (isAdded, personName) => {
+  const updateNotification = (isAdded, message) => {
     setNotification({
       isAdded: isAdded,
-      message: isAdded
-        ? `Added ${personName}`
-        : `Information of ${personName} has already been removed from server`,
+      message: message
     });
     setTimeout(() => {
       setNotification({ isAdded: false, message: null });
@@ -64,11 +62,18 @@ const App = () => {
           })
           .catch((error) => {
             console.log("Update failed: ", error);
-            updateNotification(false, newName);
+            if (error.response) {
+              if (error.response.status == 404) {
+                updateNotification(false, `Information of ${newName} has already been removed from server`);
 
-            setPersons(
-              persons.filter((person) => person.id !== foundPerson.id)
-            );
+                setPersons(
+                  persons.filter((person) => person.id !== foundPerson.id)
+                );
+              }
+              else {
+                updateNotification(false, error.response.data.error);
+              }
+            }
           });
       } else {
         console.log("Not adding");
@@ -79,9 +84,12 @@ const App = () => {
         .then((personCreate) => {
           console.log("Created person: ", personCreate);
           setPersons(persons.concat(personCreate));
-          updateNotification(true, personCreate.name);
+          updateNotification(true, `Added ${personCreate.name}`);
         })
-        .catch((error) => console.log("Create failed: ", error));
+        .catch((error) => {
+          console.log("Create failed: ", error.response.data.error)
+          updateNotification(false, error.response.data.error);
+    });
     }
     setNewName("");
     setNewNumber("");

@@ -1,5 +1,5 @@
-import personService from "../services/phonebook";
 const Persons = ({ persons, filter, onDelete }) => {
+  console.log("Persons: ", persons);
   const numbers = persons
     .filter((p) => p.name.toLowerCase().includes(filter.toLowerCase()))
     .map((p) => <PersonLine key={p.id} person={p} onDelete={onDelete} />);
